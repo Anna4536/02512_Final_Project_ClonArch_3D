@@ -55,6 +55,16 @@ def get_clone_field(matrix_u, N, clone_idx=0, order="F"):
     return arr.reshape((N, N), order=order).T
 
 
+def mean_square_err(N,ground_truth,new,mask):
+    # Mean square error of non-masked values
+
+    invert = ~mask
+
+    mean = (ground_truth[invert]-new[invert])**2
+
+    print(mean.sum()/len(ground_truth[invert]))
+
+
 
 def main():
 
@@ -74,22 +84,30 @@ def main():
     # Make simulated grid
     grid,matrix_u,matrix_f,grid_plot = run_simulation(N,NORMAL_PURITY_THRESHOLD,phylogeny,seed=43,show_plot=False)
     matrix_u = np.array(matrix_u)
-    one = get_clone_field(matrix_u,N,1)
-    plt.imshow(one)
-    plt.title("Simulated Dataset: Mutant 2 ground truth")
-    plt.savefig("fig1")
-    plt.close()
 
-    mask = random_cell_mask(N,N,0.2)
+    one = get_clone_field(matrix_u,N,1)
+    mask = random_cell_mask(N,N,0.75)
 
     new = reconstruct_from_mask(one,mask,method="linear",clip_range=(0,1))
 
-    plt.imshow(new)
-    plt.title("Simulated Dataset:\n Mutant 2 Linear Interpolation, 3% known")
-    plt.savefig("fig5")
+    #print(mean_square_err(N,one,new,mask))
+
+
+    ONE = pd.DataFrame(one)
+
+
+    ONE[~mask] = np.nan
+
+    
+    row = ONE.interpolate(method='linear', limit_direction='both', axis=1)
+    col = ONE.interpolate(method='linear', limit_direction='both', axis=0)
+
+    avg = (row + col) / 2
+    
+    interpolated = np.array(avg)
+
+    plt.imshow(interpolated)
     plt.show()
-
-
 
 
 
