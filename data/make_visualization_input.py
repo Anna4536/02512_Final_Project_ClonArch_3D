@@ -5,6 +5,8 @@ import pandas as pd
 
 
 INPUT_CSV = Path("f_gaussian_lp.csv")
+# Row labels of the interpolated matrix: sample name for measured spots, "Interpolated" otherwise
+COORDS_CSV = Path("new_fff_ppp_gaussian_process.csv")
 OUTPUT_JS = Path("gp_interpolated.js")
 
 
@@ -110,11 +112,15 @@ if matrix.shape != expected_shape:
 if matrix.isna().any().any():
     raise ValueError("LP matrix contains missing values.")
 
+coordinates = pd.read_csv(COORDS_CSV, index_col=0).index.astype(str).tolist()
+if len(coordinates) != len(matrix):
+    raise ValueError("coordinates and LP matrix have different lengths")
+
 data = {
     "cols": 44,
     "rows": 42,
-    "u_thresholds": [0.1] * 20,
-    "f_thresholds": [0.1] * 20,
+    "default_threshold": 0.1,
+    "coordinates": coordinates,
     "mut_labels": mutation_labels,
     "selected_mutations": [],
     "input": matrix.values.tolist(),
