@@ -5,6 +5,7 @@ import pandas as pd
 
 
 INPUT_CSV = Path("f_gaussian_lp.csv")
+STD_CSV = Path("gp_uncertainty.csv")
 # Row labels of the interpolated matrix: sample name for measured spots, "Interpolated" otherwise
 COORDS_CSV = Path("new_fff_ppp_gaussian_process.csv")
 OUTPUT_JS = Path("gp_interpolated.js")
@@ -100,6 +101,7 @@ mutation_labels = [
 
 # LP.ipynb writes no header and no index.
 matrix = pd.read_csv(INPUT_CSV, header=None)
+gp_std_matrix = pd.read_csv(STD_CSV, header=None)
 
 expected_shape = (42 * 44, 20)
 
@@ -109,8 +111,24 @@ if matrix.shape != expected_shape:
         f"but found {matrix.shape}."
     )
 
+if gp_std_matrix.shape != expected_shape:
+    raise ValueError(
+        f"Expected GP uncertainty shape {expected_shape}, "
+        f"but found {gp_std_matrix.shape}."
+    )
+
 if matrix.isna().any().any():
     raise ValueError("LP matrix contains missing values.")
+
+if gp_std_matrix.isna().any().any():
+    raise ValueError(
+        "GP uncertainty matrix contains missing values."
+    )
+
+if (gp_std_matrix < 0).any().any():
+    raise ValueError(
+        "GP standard deviations cannot be negative."
+    )
 
 coordinates = pd.read_csv(COORDS_CSV, index_col=0).index.astype(str).tolist()
 if len(coordinates) != len(matrix):
@@ -119,11 +137,30 @@ if len(coordinates) != len(matrix):
 data = {
     "cols": 44,
     "rows": 42,
+
+    # main.js expects one threshold per tree node.
+    "u_thresholds": [0.1] * 20,
+    "f_thresholds": [0.1] * 20,
     "default_threshold": 0.1,
+
     "coordinates": coordinates,
     "mut_labels": mutation_labels,
-    "selected_mutations": [],
+
+    # Start with all mutations selected.
+    "selected_mutations": list(range(1, 21)),
+
+    # LP-adjusted GP mean frequencies.
     "input": matrix.values.tolist(),
+
+    # GP posterior standard deviations.
+    "gp_std": gp_std_matrix.values.tolist(),
+
+    # Use the probability field for boundary extraction.
+    "contour_mode": "probability",
+
+    # Extract the boundary where
+    # P(prevalence >= slider threshold) = 0.95.
+    "probability_threshold": 0.001,
 }
 
 

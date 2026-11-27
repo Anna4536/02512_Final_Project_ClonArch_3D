@@ -10,6 +10,35 @@ var test = test;
 
 var uThreshold = [];
 
+/* Probability-contour configuration supplied by gp_interpolated.js. */
+var contourMode = data.contour_mode || "deterministic";
+var probabilityThreshold = data.probability_threshold || 0.95;
+var gpStdF = data.gp_std || null;
+var currMatrixUStd = null;
+
+console.log("Contour mode:", contourMode);
+console.log("Probability threshold:", probabilityThreshold);
+console.log("GP uncertainty loaded:", gpStdF !== null);
+
+/* Approximation to the standard normal cumulative distribution function. */
+function normalCDF(x) {
+    var sign = x < 0 ? -1 : 1;
+    var z = Math.abs(x) / Math.sqrt(2.0);
+    var t = 1.0 / (1.0 + 0.3275911 * z);
+    var erf = 1.0 - (((((1.061405429 * t - 1.453152027) * t)
+        + 1.421413741) * t - 0.284496736) * t
+        + 0.254829592) * t * Math.exp(-z * z);
+    return 0.5 * (1.0 + sign * erf);
+}
+
+/* Return P(U >= threshold) for a Gaussian mean and standard deviation. */
+function exceedanceProbability(mean, standardDeviation, threshold) {
+    if(!isFinite(standardDeviation) || standardDeviation <= 1e-12) {
+        return mean >= threshold ? 1.0 : 0.0;
+    }
+    return 1.0 - normalCDF((threshold - mean) / standardDeviation);
+}
+
 /* Size of grid */
 var n = data.cols;  // columns
 //var m = fullMatrixF.length/n;
@@ -112,6 +141,28 @@ function getMatU(f, tree, idx) {
     return matU
 }
 
+/*
+ * Approximate propagation of GP uncertainty from cumulative frequencies F
+ * to clone prevalences U, assuming node predictions are independent:
+ * Var(U_parent) = Var(F_parent) + sum Var(F_child).
+ */
+function getMatUVariance(matrixFVariance, tree, indexMap) {
+    var varianceU = [];
+    for(var row = 0; row < matrixFVariance.length; row++) {
+        varianceU[row] = matrixFVariance[row].slice();
+    }
+    for(var parent in tree) {
+        for(var childIndex in tree[parent]) {
+            var child = tree[parent][childIndex];
+            for(var row = 0; row < varianceU.length; row++) {
+                varianceU[row][indexMap[parent]] +=
+                    matrixFVariance[row][indexMap[child]];
+            }
+        }
+    }
+    return varianceU;
+}
+
 /* Given a phylo tree, idx returns the index of a node in matrix F */
 var idx = {}
 var counter = 0
@@ -181,6 +232,18 @@ function getSubsetMutations(selectedMutations) {
     }
 
     var matrixU = getMatU(matrixF, phyloTree, idx)
+    var matrixUVariance = null;
+
+    if(gpStdF && gpStdF.length === matrixF.length &&
+       gpStdF[0].length === matrixF[0].length) {
+        var matrixFVariance = gpStdF.map(function(row) {
+            return row.map(function(value) {
+                var numericValue = Number(value);
+                return numericValue * numericValue;
+            });
+        });
+        matrixUVariance = getMatUVariance(matrixFVariance, phyloTree, idx);
+    }
 
     /* 
      * start subset process  !!! 
@@ -254,6 +317,17 @@ function getSubsetMutations(selectedMutations) {
     //default for when no nodes are selected except the root
     indexToColorIdx[0]=0
 
+    var newUStd = null;
+    if(matrixUVariance) {
+        /* getNewU sums merged nodes; variances also add under independence. */
+        var varianceInfo = getNewU(newMuts, matrixUVariance, idx, order);
+        newUStd = varianceInfo[0].map(function(row) {
+            return row.map(function(value) {
+                return Math.sqrt(Math.max(0.0, value));
+            });
+        });
+    }
+
     var newInfo = getNewU(newMuts, matrixU, idx, order)
     var newU = newInfo[0]
     idx = newInfo[1]
@@ -295,6 +369,7 @@ function getSubsetMutations(selectedMutations) {
 
     currMatrixU = matrixU
     currMatrixF = matrixF
+    currMatrixUStd = newUStd
     
 
     
@@ -315,7 +390,7 @@ function getSubsetMutations(selectedMutations) {
 
 
 
-    visualize(currMatrixU, currMatrixF, erode)
+    visualize(currMatrixU, currMatrixF, erode, currMatrixUStd)
 
     
 
@@ -334,7 +409,7 @@ function getSubsetMutations(selectedMutations) {
     thresholdRefresh();
 }
 
-function visualize(matrixU, matrixF, erode) {
+function visualize(matrixU, matrixF, erode, matrixUStd) {
     if(debugging) {
         var tree = JSON.stringify(phyloTree)
         document.getElementById("debug-tree").innerHTML = "Phylogeny Tree: <br><br>" + tree + "<br><br>"
@@ -366,7 +441,7 @@ function visualize(matrixU, matrixF, erode) {
         //get bigger outline for matrix U 
 
         try {
-            drawMatrix(matrixU, "#clones", uThreshold);
+            drawMatrix(matrixU, "#clones", uThreshold, matrixUStd);
             //drawMatrix(matrixF, "#frequency", fThreshold);
         } catch (e) {
             console.log(e);
@@ -380,7 +455,7 @@ function visualize(matrixU, matrixF, erode) {
             thresholds: thresholds (for each mutation)
 
         */ 
-        function drawMatrix(matrix, div, thresholds) {
+        function drawMatrix(matrix, div, thresholds, uncertaintyMatrix) {
 
             var currmatrix = 'u';
 
@@ -469,6 +544,51 @@ function visualize(matrixU, matrixF, erode) {
                     temp.push(matrix[i][index]);
                 }
                 grid.push(temp);
+
+                /*
+                 * In probability mode, contour P(U >= prevalence threshold)
+                 * instead of contouring the mean U field directly.
+                 */
+                // if (
+                //     contourMode === "probability" &&
+                //     !uncertaintyMatrix
+                // ) {
+                //     throw new Error(
+                //         "Probability contour requested, but uncertaintyMatrix is missing."
+                //     );
+                // }
+                if(contourMode === "probability" && uncertaintyMatrix) {
+                    var stdGrid = [];
+                    var stdRow = [];
+
+                    for(var i = 0; i < uncertaintyMatrix.length; i++) {
+                        if(i != 0 && i%n == 0) {
+                            stdGrid.push(stdRow);
+                            stdRow = [];
+                        }
+                        stdRow.push(uncertaintyMatrix[i][index]);
+                    }
+                    stdGrid.push(stdRow);
+
+                    var prevalenceThreshold = threshold[0];
+                    for(var row = 0; row < grid.length; row++) {
+                        for(var col = 0; col < grid[row].length; col++) {
+                            grid[row][col] = exceedanceProbability(
+                                grid[row][col],
+                                stdGrid[row][col],
+                                prevalenceThreshold
+                            );
+                        }
+                    }
+
+                    /* Marching squares now extracts the chosen confidence level. */
+                    threshold = [probabilityThreshold];
+                    console.log("Applying probability contour", {
+                        cloneIndex: index,
+                        prevalenceThreshold: prevalenceThreshold,
+                        probabilityThreshold: probabilityThreshold
+                    });
+                }
 
                 // create a border of zeros around the grid!! 
                 // for creating a closed path and to visualize entire tumor
@@ -755,6 +875,39 @@ function visualize(matrixU, matrixF, erode) {
                     temp.push(matrix[i][globalSliderIdx]);
                 }
                 grid.push(temp);
+
+                /* Apply the same probability conversion after slider updates. */
+                if(contourMode === "probability" && uncertaintyMatrix) {
+                    var stdGrid = [];
+                    var stdRow = [];
+
+                    for(var i = 0; i < uncertaintyMatrix.length; i++) {
+                        if(i != 0 && i%n == 0) {
+                            stdGrid.push(stdRow);
+                            stdRow = [];
+                        }
+                        stdRow.push(uncertaintyMatrix[i][globalSliderIdx]);
+                    }
+                    stdGrid.push(stdRow);
+
+                    var prevalenceThreshold = threshold[0];
+                    for(var row = 0; row < grid.length; row++) {
+                        for(var col = 0; col < grid[row].length; col++) {
+                            grid[row][col] = exceedanceProbability(
+                                grid[row][col],
+                                stdGrid[row][col],
+                                prevalenceThreshold
+                            );
+                        }
+                    }
+
+                    threshold = [probabilityThreshold];
+                    console.log("Updating probability contour", {
+                        cloneIndex: globalSliderIdx,
+                        prevalenceThreshold: prevalenceThreshold,
+                        probabilityThreshold: probabilityThreshold
+                    });
+                }
 
                 // create a border of zeros around the grid!! 
                 // for creating a closed path and to visualize entire tumor
