@@ -5,7 +5,7 @@
     <title>Spatial Composition</title>
 
     <!--<script type="text/javascript" src="input.json"></script>-->
-    <script type="text/javascript" src="data/gp_interpolated.js"></script>
+    <script type="text/javascript" src="pnas.json"></script>
     <script src="https://d3js.org/d3.v3.min.js"></script>
     <script src="dist/marchingsquares-isolines.js"></script>
     <script src="dist/dagre-d3.js"></script>
@@ -425,5 +425,21 @@ function triggerDownload(e) {
 
 
 </script>
-<script type="text/javascript" src="main.js"></script>
+<script>
+    //var boundaryMethod = "CONNECTED_COMPONENTS";
+    var name = "data/f_gaussian_lp.csv";
+    //var name = "data/f_interpolated_lp.csv";
+
+    d3.text(name, function(error, text) {
+        if (error) throw error;
+
+        data.input = d3.csv.parseRows(text).map(
+            row => row.map(Number)
+        );
+
+        var script = document.createElement("script");
+        script.src = "main.js";
+        document.body.appendChild(script);
+    });
+</script>
 </html>
