@@ -308,6 +308,7 @@ def run_simulation(n_grid, purity, tree, seed=None, show_plot=False):
     root = get_root(phylogeny)
     num_clones = len(phylogeny.keys())
     grid = get_grid(phylogeny, N, purity, root)
+
     img_grid = [[stringify(grid[x][y].keys()) for x in range(N)] for y in range(N)]
 
     #pretty_print(img_grid)

@@ -30,7 +30,6 @@ def reconstruct_from_mask(
     if len(known_vals) == 0:
         recon = np.zeros_like(field, dtype=float)
     else:
-        recon = griddata()
         recon = griddata(known_pts, known_vals, all_pts, method=method).reshape(
             (n_rows, n_cols)
         )
@@ -73,15 +72,21 @@ def main():
     }
 
     # Make simulated grid
-    grid,matrix_u,matrix_f,grid_plot = run_simulation(N,NORMAL_PURITY_THRESHOLD,phylogeny,seed=43,show_plot=True)
+    grid,matrix_u,matrix_f,grid_plot = run_simulation(N,NORMAL_PURITY_THRESHOLD,phylogeny,seed=43,show_plot=False)
     matrix_u = np.array(matrix_u)
     one = get_clone_field(matrix_u,N,1)
+    plt.imshow(one)
+    plt.title("Simulated Dataset: Mutant 2 ground truth")
+    plt.savefig("fig1")
+    plt.close()
 
-    mask = random_cell_mask(N,N,0.25)
+    mask = random_cell_mask(N,N,0.2)
 
     new = reconstruct_from_mask(one,mask,method="linear",clip_range=(0,1))
 
     plt.imshow(new)
+    plt.title("Simulated Dataset:\n Mutant 2 Linear Interpolation, 3% known")
+    plt.savefig("fig5")
     plt.show()
 
 
