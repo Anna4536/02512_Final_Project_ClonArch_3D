@@ -1,3 +1,21 @@
+function getBoundaries(grid, thresholds, cloneId) {
+
+    if (typeof precomputedBoundaries !== "undefined") {
+        return [
+            precomputedBoundaries[String(cloneId - 1)] || []
+        ];
+    }
+
+    return MarchingSquaresJS.isoLines(
+        grid,
+        thresholds,
+        {
+            polygons: false,
+            linearRing: false
+        }
+    );
+}
+
 var debugging = false; 
 
 var selectedTreeIdx = 0;
@@ -489,14 +507,11 @@ function visualize(matrixU, matrixF, erode) {
                 var curr_node=order[index][order[index].length-1]
     
                 var isoLines = [];
-                MarchingSquaresJS
-                  .isoLines(borders,
-                            threshold,
-                            {
-                                polygons: false,
-                                linearRing: false
-                            }
-                  )
+                getBoundaries(
+                    borders,
+                    threshold,
+                    indexToColorIdx[index]
+                )
                   .forEach(function(isolines, i) {
                     if(i < colorRanges.length) {
                         isoLines.push({
@@ -773,14 +788,11 @@ function visualize(matrixU, matrixF, erode) {
                 }
 
                 var isoLines = [];
-                MarchingSquaresJS
-                  .isoLines(borders,
-                            threshold,
-                            {
-                                polygons: false,
-                                linearRing: false
-                            }
-                  )
+                getBoundaries(
+                    borders,
+                    threshold,
+                    indexToColorIdx[globalSliderIdx]
+                )
                   .forEach(function(isolines, i) {
                     isoLines.push({
                       "coords": isolines,
