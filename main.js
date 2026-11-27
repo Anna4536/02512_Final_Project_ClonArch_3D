@@ -1,7 +1,9 @@
 function getBoundaries(grid, thresholds, cloneId) {
 
     if (typeof precomputedBoundaries !== "undefined") {
-        return [precomputedBoundaries[String(cloneId)] || []];
+        return [
+            precomputedBoundaries[String(cloneId - 1)] || []
+        ];
     }
 
     return MarchingSquaresJS.isoLines(
