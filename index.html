@@ -425,5 +425,19 @@ function triggerDownload(e) {
 
 
 </script>
-<script type="text/javascript" src="main.js"></script>
+<script>
+    var boundaryMethod = "MARCHING_SQUARES";
+
+    d3.text("data/f_nearest_neighbors_lp.csv", function(error, text) {
+        if (error) throw error;
+
+        data.input = d3.csv.parseRows(text).map(
+            row => row.map(Number)
+        );
+
+        var script = document.createElement("script");
+        script.src = "main.js";
+        document.body.appendChild(script);
+    });
+</script>
 </html>
